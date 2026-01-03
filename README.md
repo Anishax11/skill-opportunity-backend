@@ -1,11 +1,21 @@
 🔧 SkillLens Backend
 ---
-The backend infrastructure powering SkillLens — an AI-driven platform that helps students discover internships and hackathons aligned with their skills.
+Backend services for SkillLens, an AI-powered platform that helps students discover internships and hackathons aligned with their skills.
 
-This service handles resume analysis, skill matching, and secure API communication, built with Node.js + Express and deployed as serverless functions on Vercel.
+This repository contains the Node.js + Express backend, deployed on Vercel, and responsible for:
+
+AI-powered resume analysis
+
+Opportunity processing and skill matching
+
+Secure API handling
+
+Firebase Authentication for user identity management
+
 ---
 
 🛠 Tech Stack
+---
 
 | Layer          | Technology              |
 | -------------- | ----------------------- |
