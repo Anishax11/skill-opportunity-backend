@@ -1,16 +1,15 @@
 {
     "name": "skill-opportunity-backend",
     "scripts": {
-      "start": "node index.js"
+        "start": "node index.js"
     },
     "dependencies": {
-      "cors": "^2.8.5",
-      "dotenv": "^17.2.3",
-      "express": "^4.22.1",
-      "firebase-admin": "^12.7.0",
-      "multer": "^2.0.2",
-      "node-fetch": "^3.3.2",
-      "pdf-parse": "^1.1.4"
+        "cors": "^2.8.5",
+        "dotenv": "^17.2.3",
+        "express": "^4.22.1",
+        "firebase-admin": "^12.7.0",
+        "multer": "^2.0.2",
+        "node-fetch": "^2.7.0",
+        "pdf-parse": "^1.1.4"
     }
-  }
-  
+}
