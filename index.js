@@ -75,6 +75,100 @@ app.get("/hackathons", async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
+app.post("/upload-resume", verifyUser, upload.single("resume"), async (req, res) => {
+  try {
+    console.log("1️⃣ Upload route hit");
+
+    const uid = req.user.uid; // set by verifyUser middleware
+    console.log("2️⃣ User verified:", uid);
+
+    if (!req.file) {
+      return res.status(400).json({ error: "No resume file uploaded" });
+    }
+
+    const pdfBuffer = req.file.buffer;
+    console.log("6️⃣ Buffer length:", pdfBuffer.length);
+
+    // Parse PDF
+    const parsed = await pdfParse(pdfBuffer);
+    console.log("7️⃣ PDF parsed, text length:", parsed.text.length);
+
+    // Extract skills
+    const extractedSkills = extractSkills(parsed.text);
+    console.log("✅ Extracted Skills:", extractedSkills);
+
+    // Prepare Firestore update
+    const updateData = {
+      resumeText: parsed.text,
+      resumeUpdatedAt: Date.now(),
+    };
+
+    if (extractedSkills.length > 0) {
+      updateData.skills = admin.firestore.FieldValue.arrayUnion(
+        ...extractedSkills
+      );
+    }
+
+    await db.collection("users").doc(uid).set(updateData, { merge: true });
+
+    res.status(200).json({
+      success: true,
+      extractedSkills,
+    });
+
+  } catch (err) {
+    console.error("❌ Upload resume error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+exports.uploadResume = functions.https.onRequest((req, res) => {
+  cors(req, res, async () => {
+    if (req.method !== "POST") {
+      return res.status(405).json({ error: "Method not allowed" });
+    }
+
+    try {
+      const decoded = await verifyUser(req);
+      const uid = decoded.uid;
+      console.log("User verified:", uid);
+
+      upload.single("resume")(req, res, async (err) => {
+        if (err) return res.status(400).json({ error: err.message });
+
+        try {
+          const pdfBuffer = req.file.buffer;
+          console.log("Resume buffer length:", pdfBuffer.length);
+
+          const parsed = await pdfParse(pdfBuffer);
+          console.log("PDF parsed, text length:", parsed.text.length);
+
+          const extractedSkills = extractSkills(parsed.text);
+          console.log("Extracted Skills:", extractedSkills);
+
+          const updateData = {
+            resumeText: parsed.text,
+            resumeUpdatedAt: Date.now(),
+          };
+
+          if (extractedSkills.length > 0) {
+            updateData.skills = admin.firestore.FieldValue.arrayUnion(...extractedSkills);
+          }
+
+          await db.collection("users").doc(uid).set(updateData, { merge: true });
+
+          res.status(200).json({ success: true, extractedSkills });
+        } catch (e) {
+          console.error("PDF parse / Firestore error:", e);
+          res.status(500).json({ error: e.message });
+        }
+      });
+    } catch (err) {
+      console.error("Authentication error:", err);
+      res.status(401).json({ error: err.message });
+    }
+  });
+});
 async function getAnalysis({ userId, itemId, type }) {
   try {
     console.log("Getting analysis for:", type, itemId);
