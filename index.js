@@ -8,20 +8,10 @@ const pdfParse = require("pdf-parse");
 
 const admin = require("firebase-admin");
 
-let serviceAccount;
 
-if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-  // Production (Vercel)
-  try {
-    serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-  } catch (err) {
-    console.error("Invalid FIREBASE_SERVICE_ACCOUNT JSON:", err);
-    process.exit(1);
-  }
-} else {
-  // Local development
-  serviceAccount = require("./serviceAccountKey.json");
-}
+
+
+
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -29,9 +19,20 @@ app.use(express.json());
 // ------------------ Firebase ------------------
 
 
+
+
+// Parse the JSON from your environment variable
+const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+
+// Replace literal '\n' with actual newlines in the private key
+serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 });
+
+console.log("Firebase initialized successfully!");
+
 
 const db = admin.firestore();
 
