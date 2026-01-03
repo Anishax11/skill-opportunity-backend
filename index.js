@@ -8,38 +8,42 @@ const pdfParse = require("pdf-parse");
 
 const admin = require("firebase-admin");
 
-app.use(
-    cors({
-      origin: "https://skill-opportunity-translator.web.app",
-      methods: ["GET", "POST", "PUT", "DELETE"],
-    })
-  );
-
-
-
+// ------------------ CORS ------------------
+const corsOptions = {
+    origin: "https://skill-opportunity-translator.web.app",
+    methods: ["GET", "POST", "PUT", "DELETE"],
+    credentials: true,
+  };
+  
+  // Apply CORS globally
+  app.use(cors(corsOptions));
+  
+  // Handle preflight OPTIONS requests
+  app.options("*", cors(corsOptions));
+  
+  // ------------------ JSON parser ------------------
+  app.use(express.json());
 const app = express();
 app.use(cors());
 app.use(express.json());
 
 // ------------------ Firebase ------------------
 
+let db;
+try {
+  const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+  serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, "\n");
 
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+  });
 
-
-// Parse the JSON from your environment variable
-const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-
-// Replace literal '\n' with actual newlines in the private key
-serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
-
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
-});
-
-console.log("Firebase initialized successfully!");
-
-
-const db = admin.firestore();
+  db = admin.firestore();
+  console.log("Firebase initialized successfully!");
+  console.log("FIREBASE_SERVICE_ACCOUNT length:", process.env.FIREBASE_SERVICE_ACCOUNT?.length);
+} catch (err) {
+  console.error("Firebase initialization failed:", err);
+}
 
 
 
@@ -223,3 +227,4 @@ function extractSkills(text) {
 // ------------------ Start ------------------
 
 module.exports = app;
+console.log("Backend starting...");
