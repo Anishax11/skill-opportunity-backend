@@ -75,6 +75,197 @@ app.get("/hackathons", async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
+async function getAnalysis({ userId, itemId, type }) {
+  try {
+    console.log("Getting analysis for:", type, itemId);
+
+    const fetch = (...args) =>
+      import("node-fetch").then(({ default: fetch }) => fetch(...args));
+
+    // 1️⃣ Get user data
+    const userDoc = await db.collection("users").doc(userId).get();
+    if (!userDoc.exists) return "User resume not found";
+
+    const userData = userDoc.data();
+    const resumeText = userData.resumeText || "No resume text provided";
+    const userSkills = userData.skills || [];
+
+    // 2️⃣ Determine collection
+    let collectionName;
+    let promptContext;
+
+    if (type === "internship") {
+      collectionName = "internships";
+      promptContext = "Internship details";
+    } else if (type === "hackathon") {
+      collectionName = "hackathons";
+      promptContext = "Hackathon details";
+    } else {
+      return "Invalid analysis type";
+    }
+
+    // 3️⃣ Get item data
+    const itemDoc = await db.collection(collectionName).doc(itemId).get();
+    if (!itemDoc.exists) return `${type} not found`;
+
+    const itemData = itemDoc.data();
+
+    const description =
+      itemData.description ||
+      itemData.Description ||
+      "No description provided";
+
+    const skillsRequired =
+      itemData.skillsRequired ||
+      itemData.skills ||
+      itemData.themes ||
+      itemData.domains ||
+      [];
+
+    // 4️⃣ Gemini request
+    const res = await fetch(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": process.env.GEMINI_API_KEY
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: "user",
+              parts: [
+                {
+                  text: `
+Opportunity type: ${type}
+Description:
+${description}
+
+Required skills:
+${Array.isArray(skillsRequired) ? skillsRequired.join(", ") : skillsRequired}
+
+User summary:
+${resumeText.slice(0, 4000)}
+
+User skills:
+${Array.isArray(userSkills) ? userSkills.join(", ") : userSkills}
+
+
+You are an expert technical recruiter and career advisor.
+
+Required skills:
+${Array.isArray(skillsRequired) ? skillsRequired.join(", ") : skillsRequired}
+
+
+User profile:
+Resume:
+${resumeText}
+
+User skills:
+${Array.isArray(userSkills) ? userSkills.join(", ") : userSkills}
+
+Task:
+Analyze how suitable this opportunity is for the user.
+
+Skill interpretation rules:
+- Treat skill names semantically, not literally.
+- Consider common variants equivalent (e.g., Node.js, NodeJS, node js).
+- If a skill appears in the user's skill list, assume the user has it.
+- Do NOT mark a skill as missing if it is a semantic match.
+- Use reasonable inference from resume content (projects, coursework, experience).
+- Do NOT invent skills or projects that are not mentioned.
+
+Response format rules:
+- Respond in plain text only.
+- Use clear section headings in **bold**.
+- Use ✓ for matched qualifications.
+- Use ? for missing or unclear qualifications.
+- Use • for bullet points.
+- Keep the tone realistic, professional, and encouraging (similar to LinkedIn job insights).
+- Do NOT use emojis.
+
+Output structure (follow exactly):
+
+--------------------------------------------------
+
+Overall Match: XX% 
+
+(Brief 1–2 line summary explaining the match percentage.)
+
+Application Verdict
+Choose ONE and state it clearly:
+- "Strongly recommended to apply"
+- "Recommended to apply with preparation"
+- "Apply only if willing to upskill"
+- "Not recommended at this stage"
+
+Then add a very short and to rhe point justification paragraph, written like a recruiter review.
+
+---
+
+Required Qualifications Match
+Matches X of Y required qualifications:
+
+✓ Skill name — short explanation of how the user demonstrates this  
+? Skill name — clear reason why it is missing or unclear (e.g., “No mention of Unreal Engine”)
+
+---
+
+Missing Skills & How to Learn Them
+For each missing or unclear skill:
+
+Skill Name
+• Why it matters for this role  
+• Suggested learning roadmap (beginner → intermediate → applied)  
+• Estimated time to reach basic competence  
+
+Recommended Resources
+• Official docs / trusted platforms (e.g., Unreal Engine Docs, Coursera, Udemy, freeCodeCamp, YouTube channels, GitHub repos)
+• Avoid obscure or unreliable sources
+
+---
+
+These skills may be assessed during interviews or assignments:
+• Soft skills
+• Domain interest
+• Problem-solving ability
+• Communication / collaboration
+• Portfolio or project discussion
+
+---
+
+Final Advice
+End with a concise, actionable paragraph answering:
+“What should the user do next if they want to pursue this opportunity?”
+
+--------------------------------------------------`
+
+                }
+              ]
+            }
+          ]
+        })
+      }
+    );
+
+    const data = await res.json();
+    console.log("Gemini API Response:", JSON.stringify(data, null, 2));
+
+    const aiText =
+      data?.candidates?.[0]?.content?.parts
+        ?.map(p => p.text)
+        .join("\n") || "No analysis returned";
+
+    // console.log("Analysis result:", aiText);
+    return aiText;
+
+  } catch (err) {
+    console.error("Gemini fetch failed:", err);
+    return "Analysis failed. Please try again later.";
+  }
+}
+
 
 app.post("/analysis", async (req, res) => {
   try {
