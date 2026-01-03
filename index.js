@@ -2,33 +2,26 @@ require("dotenv").config();
 
 const express = require("express");
 const cors = require("cors");
-const fetch = require("node-fetch");
 const multer = require("multer");
 const pdfParse = require("pdf-parse");
-
 const admin = require("firebase-admin");
 
-// ------------------ CORS ------------------
-const corsOptions = {
-    origin: "https://skill-opportunity-translator.web.app",
-    methods: ["GET", "POST", "PUT", "DELETE"],
-    credentials: true,
-  };
-  
-  // Apply CORS globally
-  app.use(cors(corsOptions));
-  
-  // Handle preflight OPTIONS requests
-  app.options("*", cors(corsOptions));
-  
-  // ------------------ JSON parser ------------------
-  app.use(express.json());
+console.log("Backend starting...");
+
 const app = express();
-app.use(cors());
+
+/* ------------------ CORS ------------------ */
+const corsOptions = {
+  origin: "https://skill-opportunity-translator.web.app",
+  methods: ["GET", "POST", "PUT", "DELETE"],
+  credentials: true,
+};
+
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions));
 app.use(express.json());
 
-// ------------------ Firebase ------------------
-
+/* ------------------ Firebase ------------------ */
 let db;
 try {
   const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
@@ -40,23 +33,17 @@ try {
 
   db = admin.firestore();
   console.log("Firebase initialized successfully!");
-  console.log("FIREBASE_SERVICE_ACCOUNT length:", process.env.FIREBASE_SERVICE_ACCOUNT?.length);
 } catch (err) {
   console.error("Firebase initialization failed:", err);
 }
 
-
-
-
-// ------------------ Multer ------------------
-
+/* ------------------ Multer ------------------ */
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  limits: { fileSize: 10 * 1024 * 1024 },
 });
 
-// ------------------ Auth ------------------
-
+/* ------------------ Auth ------------------ */
 async function verifyUser(req) {
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith("Bearer ")) {
@@ -66,84 +53,29 @@ async function verifyUser(req) {
   return admin.auth().verifyIdToken(token);
 }
 
-// ------------------ Routes ------------------
-
+/* ------------------ Routes ------------------ */
 app.get("/", (req, res) => {
   res.send("Backend running");
 });
 
-// ---- INTERNSHIPS ----
 app.get("/internships", async (req, res) => {
   try {
-    res.json(await getInternships());
+    const snap = await db.collection("internships").get();
+    res.json(snap.docs.map(d => ({ id: d.id, ...d.data() })));
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
 
-// ---- HACKATHONS ----
 app.get("/hackathons", async (req, res) => {
   try {
-    res.json(await getHackathons());
+    const snap = await db.collection("hackathons").get();
+    res.json(snap.docs.map(d => ({ id: d.id, ...d.data() })));
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
 
-// ---- ALL ----
-app.get("/all", async (req, res) => {
-  try {
-    res.json(await getAllOpportunities());
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// ---- MATCHING ----
-app.get("/matching_internships", async (req, res) => {
-  try {
-    const { uid } = await verifyUser(req);
-    res.json(await getRecommendations(uid, "internship"));
-  } catch (e) {
-    res.status(401).json({ error: e.message });
-  }
-});
-
-app.get("/matching_hackathons", async (req, res) => {
-  try {
-    const { uid } = await verifyUser(req);
-    res.json(await getRecommendations(uid, "hackathon"));
-  } catch (e) {
-    res.status(401).json({ error: e.message });
-  }
-});
-
-// ---- UPLOAD RESUME ----
-app.post("/upload-resume", upload.single("resume"), async (req, res) => {
-  try {
-    const { uid } = await verifyUser(req);
-    const parsed = await pdfParse(req.file.buffer);
-
-    const skills = extractSkills(parsed.text);
-
-    await db.collection("users").doc(uid).set(
-      {
-        resumeText: parsed.text,
-        resumeUpdatedAt: Date.now(),
-        ...(skills.length && {
-          skills: admin.firestore.FieldValue.arrayUnion(...skills),
-        }),
-      },
-      { merge: true }
-    );
-
-    res.json({ success: true, extractedSkills: skills });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// ---- ANALYSIS ----
 app.post("/analysis", async (req, res) => {
   try {
     const { uid } = await verifyUser(req);
@@ -152,9 +84,7 @@ app.post("/analysis", async (req, res) => {
     if (!type) return res.status(400).json({ error: "Missing type" });
 
     const itemId = internshipId || hackathonId;
-    if (!itemId) {
-      return res.status(400).json({ error: "Missing item id" });
-    }
+    if (!itemId) return res.status(400).json({ error: "Missing item id" });
 
     const analysis = await getAnalysis({ userId: uid, itemId, type });
     res.json({ success: true, analysis });
@@ -163,68 +93,5 @@ app.post("/analysis", async (req, res) => {
   }
 });
 
-// ------------------ Helpers ------------------
-
-async function getInternships() {
-  const snap = await db.collection("internships").get();
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
-}
-
-async function getHackathons() {
-  const snap = await db.collection("hackathons").get();
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
-}
-
-async function getAllOpportunities() {
-  const [h, i] = await Promise.all([
-    getHackathons(),
-    getInternships(),
-  ]);
-  return [...h, ...i];
-}
-
-// ---- RECOMMENDATIONS ----
-function normalizeSkill(s) {
-  return s.toLowerCase().replace(/[\s.-]/g, "");
-}
-
-async function getRecommendations(uid, type) {
-  const user = await db.collection("users").doc(uid).get();
-  if (!user.exists) return [];
-
-  const userSkills = (user.data().skills || []).map(normalizeSkill);
-  const col = type === "internship" ? "internships" : "hackathons";
-
-  const snap = await db.collection(col).get();
-
-  return snap.docs
-    .map(doc => {
-      const data = doc.data();
-      const required = (data.skillsRequired || data.skills || []).map(normalizeSkill);
-      const matched = required.filter(s => userSkills.includes(s));
-      return {
-        id: doc.id,
-        title: data.title || data.name,
-        matchPercent: required.length
-          ? Math.round((matched.length / required.length) * 100)
-          : 0,
-      };
-    })
-    .sort((a, b) => b.matchPercent - a.matchPercent);
-}
-
-// ---- SKILL EXTRACTION ----
-function extractSkills(text) {
-  if (!text) return [];
-  const keywords = [
-    "JavaScript", "Python", "Java", "C++", "React", "Node.js",
-    "Express", "MongoDB", "SQL", "Docker", "AWS", "Git",
-  ];
-  const lower = text.toLowerCase();
-  return keywords.filter(k => lower.includes(k.toLowerCase()));
-}
-
-// ------------------ Start ------------------
-
+/* ------------------ Export ------------------ */
 module.exports = app;
-console.log("Backend starting...");
