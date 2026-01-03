@@ -8,7 +8,12 @@ const pdfParse = require("pdf-parse");
 
 const admin = require("firebase-admin");
 
-
+app.use(
+    cors({
+      origin: "https://skill-opportunity-translator.web.app",
+      methods: ["GET", "POST", "PUT", "DELETE"],
+    })
+  );
 
 
 
