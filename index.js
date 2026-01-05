@@ -244,6 +244,9 @@ TASK:
 Analyze suitability of this opportunity for the user.
 
 Respond in plain text only.
+Treat userSkills as VERIFIED skills provided directly by the user.
+If a skill appears in userSkills, it MUST be considered a matched skill, even if not mentioned in the resume.
+Never mark a skill as missing if it exists in userSkills.
 
 FORMAT (follow exactly):
 
